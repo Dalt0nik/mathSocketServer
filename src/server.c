@@ -8,10 +8,17 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <sys/time.h>
+#include <time.h>
+#include <stdbool.h>
 
 #define PORT "20006"
 #define BUF_SIZE 1024
+#define PROBLEM_AMOUNT 10
+
+typedef struct {
+    int a;
+    int b;
+} Pair;
 
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -28,6 +35,15 @@ void strtoupper(char *str)
         *str = toupper(*str);
 }
 
+bool isDuplicate(Pair* pairs, int count, int a, int b) {
+    for (int i = 0; i < count; i++) {
+        if (pairs[i].a == a && pairs[i].b == b) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int main()
 {
     int server_socket, client_socket;
@@ -35,7 +51,6 @@ int main()
     struct sockaddr_storage client_addr;
     socklen_t client_addr_size;
     char client_ip[INET6_ADDRSTRLEN];
-    int option_yes = 1;
     int option_no = 0;
     char buffer[BUF_SIZE];
     int bytes_received;
@@ -44,6 +59,10 @@ int main()
     int score = 0;
     fd_set read_fds;
     struct timeval timeout;
+
+    srand(time(NULL));
+
+    Pair generatedPairs[PROBLEM_AMOUNT];
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET6;
@@ -84,7 +103,7 @@ int main()
     printf("server: waiting for connections!\n");
 
     while (1)
-    { // main accept() loop
+    {
         client_addr_size = sizeof client_addr;
         client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_size);
         if (client_socket == -1)
@@ -96,12 +115,20 @@ int main()
         inet_ntop(client_addr.ss_family, get_in_addr((struct sockaddr *)&client_addr), client_ip, sizeof client_ip);
         printf("server: got connection from %s\n", client_ip);
 
-        // Send 10 multiplication problems with time limit for each
+        // problems loop
         for (int i = 0; i < 10; ++i)
         {
-            int a = rand() % 10 + 1; // Random numbers between 1 and 10
-            int b = rand() % 10 + 1;
+            int a, b;
+            do
+            {
+                a = rand() % 10 + 1;
+                b = rand() % 10 + 1;
+                printf("generating..\n");
+            }while(isDuplicate(generatedPairs, i+1, a, b));
+
             correct_answer = a * b;
+            generatedPairs[i].a = a;
+            generatedPairs[i].b = b;
 
             snprintf(buffer, sizeof(buffer), "Question %d: %d * %d = ?", i + 1, a, b);
             if (send(client_socket, buffer, strlen(buffer), 0) == -1)
@@ -162,7 +189,6 @@ int main()
             }
             else
             {
-                // Timeout reached, send message to client
                 if (send(client_socket, "\nTimeout!\n", 10, 0) == -1)
                 {
                     perror("send");
@@ -174,7 +200,7 @@ int main()
             fcntl(client_socket, F_SETFL, flags);
         }
 
-        snprintf(buffer, sizeof(buffer), "Score %d/%d\n", score, 10);
+        snprintf(buffer, sizeof(buffer), "Score %d/%d\n", score, PROBLEM_AMOUNT);
         if (send(client_socket, buffer, strlen(buffer), 0) == -1)
         {
             perror("send");
